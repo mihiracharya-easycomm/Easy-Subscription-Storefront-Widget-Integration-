@@ -23,7 +23,7 @@ const state = reactive({
 const { params: localization } = useLocalization()
 
 const { data } = await useStorefrontData(localizedKey('product-options', handle), `#graphql
-  query FetchProductOptions($handle: String, $language: LanguageCode, $country: CountryCode, $selectedOptions: [SelectedOptionInput!]) 
+  query FetchProductOptions($handle: String, $language: LanguageCode, $country: CountryCode, $selectedOptions: [SelectedOptionInput!])
   @inContext(language: $language, country: $country) {
     product(handle: $handle) {
       options(first: 250) {
@@ -64,12 +64,84 @@ const maxQuantity = computed(() => {
 
 watch(() => data.value?.selectedOrFirstAvailableVariant, variant => selectedVariant.value = variant ?? undefined)
 
+// Shared easy-subscription widget data (one fetch per product+variant)
+const productId = computed(() => props.product?.id)
+const variantId = computed(() => selectedVariant.value?.id)
+const { widgetData } = useEasySubscriptionData(productId, variantId)
+
+// Reset quantity when the breaker config asks for it on variant change
+watch(variantId, () => {
+  if (widgetData.value?.quantityBreakSettings?.isResetDefaultValue) {
+    state.quantity = Number(widgetData.value.quantityBreakSettings.defaultQuantity) || 1
+  }
+})
+
+const subscriptionState = ref<{
+  isSubscription: boolean
+  sellingPlanId?: string
+  attributes?: Array<{ key: string, value: string }>
+}>({ isSubscription: false })
+
+const breakerState = ref<{
+  selectedTierId?: string | number
+  attributes?: Array<{ key: string, value: string }>
+}>({})
+
+const giftState = ref<{
+  attributes?: Array<{ key: string, value: string }>
+}>({})
+
+const onSubscriptionChange = (payload: typeof subscriptionState.value) => {
+  subscriptionState.value = payload
+}
+
+const onBreakerChange = (payload: typeof breakerState.value) => {
+  breakerState.value = payload
+}
+
+const onGiftChange = (payload: typeof giftState.value) => {
+  giftState.value = payload
+}
+
+const mergedAttributes = computed(() => {
+  const map = new Map<string, string>()
+
+  if (subscriptionState.value.isSubscription) {
+    for (const attr of subscriptionState.value.attributes ?? []) {
+      map.set(attr.key, attr.value)
+    }
+  }
+
+  for (const attr of breakerState.value.attributes ?? []) {
+    map.set(attr.key, attr.value)
+  }
+
+  for (const attr of giftState.value.attributes ?? []) {
+    map.set(attr.key, attr.value)
+  }
+
+  return Array.from(map, ([key, value]) => ({ key, value }))
+})
+
 const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
   if (!selectedVariant.value) return
 
   loading.value = true
 
-  await add(selectedVariant.value.id, event.data.quantity).finally(() => {
+  const sellingPlanId = subscriptionState.value.isSubscription
+    ? subscriptionState.value.sellingPlanId
+    : undefined
+
+  const attributes = mergedAttributes.value.length > 0
+    ? mergedAttributes.value
+    : undefined
+
+  await add(
+    selectedVariant.value.id,
+    event.data.quantity,
+    sellingPlanId,
+    attributes,
+  ).finally(() => {
     loading.value = false
 
     emit('submit', event)
@@ -136,6 +208,31 @@ const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
         class="order-1 lg:order-2 mb-6 lg:mb-8"
       />
 
+      <ProductQuantityBreakerWidget
+        v-if="props.product"
+        v-model:quantity="state.quantity"
+        :product="props.product"
+        :selected-variant="selectedVariant"
+        :widget-data="widgetData"
+        :purchase-type="subscriptionState.isSubscription ? 'subscription' : 'one-time'"
+        @change="onBreakerChange"
+      />
+
+      <ProductSubscriptionWidget
+        v-if="props.product"
+        :product="props.product"
+        :selected-variant="selectedVariant"
+        :widget-data="widgetData"
+        @change="onSubscriptionChange"
+      />
+
+      <ProductGiftProductsWidget
+        :widget-data="widgetData"
+        :selling-plan-id="subscriptionState.sellingPlanId"
+        :is-subscription="subscriptionState.isSubscription"
+        @change="onGiftChange"
+      />
+
       <div class="flex justify-between items-center">
         <UFormField
           name="quantity"
@@ -159,7 +256,7 @@ const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
           :disabled="!selectedVariant || unavailable || loading"
           :trailing-icon="loading ? 'i-lucide-loader-circle' : unavailable ? 'i-lucide-ban' : 'i-lucide-shopping-bag'"
           :ui="{ trailingIcon: loading ? 'animate-spin size-5' : 'size-5' }"
-          :label="unavailable ? $t('product.soldOut') : $t('product.add')"
+          :label="unavailable ? $t('product.soldOut') : subscriptionState.isSubscription ? 'Add Subscription to Cart' : $t('product.add')"
         />
       </div>
     </UForm>

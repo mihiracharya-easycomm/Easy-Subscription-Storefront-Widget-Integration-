@@ -57,7 +57,12 @@ export const useCart = () => {
     })
   }
 
-  const create = async (variantId: string, quantity = 1) => setLoading(true).then(() => storefront.request(`#graphql
+  const create = async (
+    variantId: string,
+    quantity = 1,
+    sellingPlanId?: string,
+    attributes?: Array<{ key: string; value: string }>,
+  ) => setLoading(true).then(() => storefront.request(`#graphql
     mutation CreateCart($lines: [CartLineInput!], $language: LanguageCode, $country: CountryCode)
     @inContext(language: $language, country: $country) {
       cartCreate(input: { lines: $lines }) {
@@ -75,6 +80,8 @@ export const useCart = () => {
         {
           merchandiseId: variantId,
           quantity,
+          ...(sellingPlanId ? { sellingPlanId } : {}),
+          ...(attributes && attributes.length > 0 ? { attributes } : {}),
         },
       ],
     }),
@@ -113,8 +120,13 @@ export const useCart = () => {
     })).finally(() => setLoading(false))
   }
 
-  const add = async (variantId: string, quantity = 1) => {
-    if (!id.value) return create(variantId, quantity)
+  const add = async (
+    variantId: string,
+    quantity = 1,
+    sellingPlanId?: string,
+    attributes?: Array<{ key: string; value: string }>,
+  ) => {
+    if (!id.value) return create(variantId, quantity, sellingPlanId, attributes)
 
     return setLoading(true).then(() => storefront.request(`#graphql
       mutation AddToCart($cartId: ID!, $lines: [CartLineInput!]!, $language: LanguageCode, $country: CountryCode)
@@ -135,6 +147,8 @@ export const useCart = () => {
           {
             merchandiseId: variantId,
             quantity,
+            ...(sellingPlanId ? { sellingPlanId } : {}),
+            ...(attributes && attributes.length > 0 ? { attributes } : {}),
           },
         ],
       }),

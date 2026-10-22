@@ -29,6 +29,8 @@ node_modules
 # Shopify CLI and local dev artifacts
 .shopify/
 .shopify-cli
+.claude
+.vscode
 
 # Logs
 logs

@@ -1,6 +1,6 @@
 export default defineAppConfig({
   shopify: {
-    shopName: 'Nuxt Shopify Demo Store',
+    shopName: process.env.NUXT_SHOPIFY_NAME || 'Nuxt Shopify Demo Store',
 
     collection: {
       perPage: 12,
@@ -9,7 +9,7 @@ export default defineAppConfig({
 
   ui: {
     colors: {
-      primary: 'green',
+      primary: 'purple',
     },
   },
 })

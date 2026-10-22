@@ -8,6 +8,11 @@ export const cartCreateInputSchema = localizationParamsSchema.extend({
   lines: z.array(z.object({
     merchandiseId: z.string().min(1),
     quantity: z.number().min(1).optional(),
+    sellingPlanId: z.string().optional(),
+    attributes: z.array(z.object({
+      key: z.string(),
+      value: z.string(),
+    })).optional(),
   })),
 })
 
@@ -16,6 +21,11 @@ export const cartLineInputSchema = localizationParamsSchema.extend({
   lines: z.array(z.object({
     merchandiseId: z.string().min(1),
     quantity: z.number().min(1).optional(),
+    sellingPlanId: z.string().optional(),
+    attributes: z.array(z.object({
+      key: z.string(),
+      value: z.string(),
+    })).optional(),
   })),
 })
 
