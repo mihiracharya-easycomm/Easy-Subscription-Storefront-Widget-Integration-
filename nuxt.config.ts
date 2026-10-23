@@ -24,13 +24,11 @@ export default defineNuxtConfig({
           apiVersion: process.env.NUXT_SHOPIFY_CLIENTS_STOREFRONT_API_VERSION || '2026-04',
           publicAccessToken: process.env.NUXT_SHOPIFY_CLIENTS_STOREFRONT_PUBLIC_ACCESS_TOKEN || '40d025de5a3421a960e8d7970b922901',
         },
-
         customerAccount: {
           apiVersion: process.env.NUXT_SHOPIFY_CLIENTS_CUSTOMER_ACCOUNT_API_VERSION || '2026-04',
           clientId: process.env.NUXT_SHOPIFY_CLIENTS_CUSTOMER_ACCOUNT_CLIENT_ID || '5d5e8bd8-ce5f-4cdb-9556-bf330ade1e9b',
         },
       },
-
       analytics: {
         storefrontId: '187932',
 
@@ -40,8 +38,12 @@ export default defineNuxtConfig({
       },
     },
 
+    easySubscription: {
+      apiUrl: process.env.EASY_SUBSCRIPTION_API_URL || 'http://localhost:3000',
+      storefrontApiToken: process.env.EASY_SUBSCRIPTION_STOREFRONT_API_TOKEN || '',
+    },
+
     public: {
-      easySubscriptionApi: process.env.EASY_SUBSCRIPTION_API_URL || 'http://localhost:3000',
       shopifyShopName: process.env.NUXT_SHOPIFY_NAME || 'Nuxt Shopify Demo Store',
     },
   },

@@ -10,6 +10,32 @@ export interface EsSellingPlan {
   recurringAdjustmentType?: 'PERCENTAGE' | 'FIXED_AMOUNT' | 'PRICE' | null
   recurringDiscountPercentage?: number | null
   recurringDiscountAmount?: { amount: string, currencyCode: string } | null
+  requiredQuantity?: { enabled: boolean, quantity: number } | null
+}
+
+// Returns the required-quantity step for a plan: the metafield's quantity when
+// enabled, otherwise 1. Shared between the product page (reads the plan from
+// widget-data) and the cart (reads it off sellingPlanAllocation metafield).
+export const esRequiredQty = (
+  plan: Pick<EsSellingPlan, 'requiredQuantity'> | null | undefined,
+): number => {
+  const rq = plan?.requiredQuantity
+  return rq?.enabled && rq.quantity > 0 ? rq.quantity : 1
+}
+
+// Parses the JSON string stored on the REQUIRED_QUANTITY metafield. Returns 1
+// when disabled, missing, or malformed.
+export const parseRequiredQtyMetafield = (value?: string | null): number => {
+  if (!value) return 1
+  try {
+    const parsed = JSON.parse(value) as { enabled?: boolean, quantity?: number }
+    return parsed.enabled && typeof parsed.quantity === 'number' && parsed.quantity > 0
+      ? parsed.quantity
+      : 1
+  }
+  catch {
+    return 1
+  }
 }
 
 export interface EsSellingPlanGroup {
@@ -125,6 +151,67 @@ export interface EsGiftProductsForPlan {
   gift_seleted_frequency?: string[]
 }
 
+export interface EsBundleDynamicStep {
+  id: number | string
+  step_name?: string
+  step_title?: string
+  step_description?: string
+  step_icon_url?: string
+  step_limit_min: number
+  step_limit_max: number
+  step_limit_type?: 'QUANTITY' | 'PRICE' | string
+  step_limit_type_condition?: 'AND' | 'OR' | string
+  step_price_min?: number
+  step_price_max?: number
+  step_products: Array<string | number>
+  step_variants: Array<string | number>
+}
+
+export interface EsBundleVariantOption {
+  id?: number | string
+  key: string
+  name: string
+  limit: string | number
+  price: string | number
+  products?: Array<string | number>
+}
+
+export interface EsBundleVariantOptions {
+  options: Array<{ name: string, values: string[] }>
+  variants: EsBundleVariantOption[]
+}
+
+export interface EsBundleProductSettings {
+  isTaxable?: boolean
+  image_slider?: boolean
+  is_show_price?: boolean
+  is_sync_product?: boolean
+  bundle_cross_sells?: unknown[]
+  inventoryQuantities?: { locationId?: string, availableQuantity?: number }
+  is_outofstock_track?: boolean
+}
+
+export interface EsBundle {
+  isBundle: boolean
+  bundleId: string | null
+  bundleType: 'FIXED' | 'DYNAMIC' | string | null
+  bundleTag?: string | null
+  isDynamic: boolean
+  dynamicSteps: EsBundleDynamicStep[]
+  allProductsList: string[]
+  dynamicPrice?: string | number | null
+  fixedPrice?: string | number | null
+  fixedProducts: Array<string | number>
+  fixedVariants: Array<string | number>
+  fixedVariantsWithQuantity: Array<{ variant_id: string | number, quantity: number }>
+  bundleVariantOptions: EsBundleVariantOptions
+  maxVariantChooseLimit: number
+  showProductDescriptionModal: boolean
+  bundleProductSettings: EsBundleProductSettings
+  bundleCrossSells?: unknown[]
+  subscriptionMetaPmd?: unknown
+}
+
 export interface EsWidgetData {
   shop: { permanentDomain: string, currency: string }
   product: {
@@ -154,6 +241,7 @@ export interface EsWidgetData {
     settings: EsQuantityBreakSettings
   }
   giftProducts?: EsGiftProductsForPlan[] | null
+  bundle?: EsBundle | null
   cartPayloadGuide: EsCartPayloadGuide
 }
 
@@ -170,14 +258,13 @@ export const useEasySubscriptionData = (
   variantId: Ref<string | undefined>,
 ) => {
   const config = useRuntimeConfig()
-  const pub = config.public as { easySubscriptionApi?: string, shopifyShopName?: string } | undefined
+  const pub = config.public as { shopifyShopName?: string } | undefined
   // Private runtimeConfig.shopify.name is server-only; read the handle from public.
   // Fallback to config.shopify.name for SSR, then to a safe literal to avoid "<empty>.myshopify.com".
   const shopName = pub?.shopifyShopName
     ?? (config as { shopify?: { name?: string } }).shopify?.name
     ?? ''
   const shop = shopName ? `${shopName}.myshopify.com` : ''
-  const apiBase = pub?.easySubscriptionApi ?? 'http://localhost:3000'
 
   const key = computed(() =>
     `es-widget:${shop}:${toNumericId(productId.value)}:${toNumericId(variantId.value)}`,
@@ -189,7 +276,7 @@ export const useEasySubscriptionData = (
     if (!pId || !shop) return null
     const params = new URLSearchParams({ shop, productId: pId })
     if (vId) params.set('variantId', vId)
-    return `${apiBase}/api/storefront/widget-data?${params.toString()}`
+    return `/api/es/widget-data?${params.toString()}`
   })
 
   const { data, status, refresh, error } = useFetch<EsApiResponse>(
@@ -222,4 +309,49 @@ export const useEasySubscriptionData = (
     error,
     refresh,
   }
+}
+
+export interface EsBundleVariantCreateInput {
+  bundleId: string
+  productId: string
+  products: Array<{ id: string | number, quantity: number, variant_id: string | number }>
+}
+
+export interface EsBundleVariantCreateResult {
+  status: boolean
+  message?: string
+  result?: {
+    variant_id: string | number
+    price?: string | number
+  }
+}
+
+// POST /api/es/bundle-variant?shop=<shop>
+// Proxied through Nitro to Easy Subscription's /api/external/bundle/variant.
+// Backend creates a new product variant for a DYNAMIC bundle with a specific
+// component selection and returns its id + computed price.
+export const createEasySubscriptionBundleVariant = async (
+  input: EsBundleVariantCreateInput,
+): Promise<EsBundleVariantCreateResult> => {
+  const config = useRuntimeConfig()
+  const pub = config.public as { shopifyShopName?: string } | undefined
+  const shopName = pub?.shopifyShopName
+    ?? (config as { shopify?: { name?: string } }).shopify?.name
+    ?? ''
+  const shop = shopName ? `${shopName}.myshopify.com` : ''
+
+  const url = `/api/es/bundle-variant?shop=${encodeURIComponent(shop)}`
+
+  return await $fetch<EsBundleVariantCreateResult>(url, {
+    method: 'POST',
+    body: {
+      bundle_id: input.bundleId,
+      product_id: input.productId,
+      products: input.products.map(p => ({
+        id: p.id ?? '',
+        quantity: p.quantity ?? 0,
+        variant_id: p.variant_id ?? '',
+      })),
+    },
+  })
 }

@@ -4,6 +4,18 @@ const { cart } = useShopifyAnalytics()
 const route = useRoute()
 
 watch(() => route.path, () => open.value = false)
+
+// Checkout is blocked whenever a subscription line's quantity isn't a multiple
+// of its REQUIRED_QUANTITY metafield — the storefront enforces it client-side
+// because the Shopify Function's Checkout Rule isn't wired on this storefront.
+const hasInvalidRequiredQty = computed(() =>
+  lines.value.some((line) => {
+    const qty = parseRequiredQtyMetafield(
+      line.sellingPlanAllocation?.sellingPlan?.metafield?.value,
+    )
+    return qty > 1 && line.quantity % qty !== 0
+  }),
+)
 </script>
 
 <template>
@@ -92,7 +104,7 @@ watch(() => route.path, () => open.value = false)
           :ui="{
             trailingIcon: 'size-4',
           }"
-          :disabled="loading || lines.length === 0"
+          :disabled="loading || lines.length === 0 || hasInvalidRequiredQty"
         />
       </div>
     </template>

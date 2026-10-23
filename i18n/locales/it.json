@@ -202,7 +202,8 @@
         "subscription": "Abbonamento disponibile",
         "priceFrom": "Da {price}",
         "discount": "-{percentage}%",
-        "lowStock": "Ne resta solo {count} | Ne restano solo {count}"
+        "lowStock": "Ne resta solo {count} | Ne restano solo {count}",
+        "requiredQuantity": "Questo piano di abbonamento richiede una quantità multipla di {quantity}. Aggiorna la quantità per procedere."
     },
     "collection": {
         "products": {

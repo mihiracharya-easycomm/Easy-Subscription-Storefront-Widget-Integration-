@@ -202,7 +202,8 @@
         "subscription": "Abonnement disponible",
         "priceFrom": "À partir de {price}",
         "discount": "-{percentage}%",
-        "lowStock": "Plus que {count} en stock | Plus que {count} en stock"
+        "lowStock": "Plus que {count} en stock | Plus que {count} en stock",
+        "requiredQuantity": "Cet abonnement exige une quantité multiple de {quantity}. Veuillez ajuster la quantité pour continuer."
     },
     "collection": {
         "products": {

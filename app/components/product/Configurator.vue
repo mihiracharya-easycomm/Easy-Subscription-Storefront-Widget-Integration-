@@ -12,6 +12,8 @@ const emit = defineEmits<{
 }>()
 
 const { add } = useCart()
+const toast = useToast()
+const { t } = useI18n()
 
 const handle = computed(() => selectedVariant.value?.product.handle)
 
@@ -91,6 +93,40 @@ const giftState = ref<{
   attributes?: Array<{ key: string, value: string }>
 }>({})
 
+const bundleState = ref<{
+  attributes?: Array<{ key: string, value: string }>
+  ownsAddToCart: boolean
+}>({ ownsAddToCart: false })
+
+const isBundle = computed(() => Boolean(widgetData.value?.bundle?.isBundle))
+
+// REQUIRED_QUANTITY enforcement — mirrors the Easy Subscription Shopify Function
+// client-side because the Checkout Rule isn't wired up on this storefront.
+const activePlan = computed(() => {
+  if (!subscriptionState.value.isSubscription) return undefined
+  const id = subscriptionState.value.sellingPlanId
+  if (!id) return undefined
+  return widgetData.value?.sellingPlanGroups
+    ?.flatMap(g => g.sellingPlans)
+    .find(p => p.id === id)
+})
+
+const requiredQty = computed(() => esRequiredQty(activePlan.value))
+
+// Snap state.quantity to the required-quantity grid when either side changes.
+// Idempotent on purpose — if the current qty is already a valid multiple of
+// the new step we leave it alone, so switching req=10 → req=2 at qty=10 stays
+// at 10 instead of jumping. Floor-biased so a plan switch never bumps the
+// user up a step; the only time we snap up is from an invalid value below the
+// new minimum.
+watch([requiredQty, () => state.quantity], ([qty, currentQty]) => {
+  if (qty <= 1) return
+  if (currentQty >= qty && currentQty % qty === 0) return
+  const floored = Math.floor(currentQty / qty) * qty
+  const next = floored >= qty ? floored : qty
+  if (next !== currentQty) state.quantity = next
+}, { flush: 'post' })
+
 const onSubscriptionChange = (payload: typeof subscriptionState.value) => {
   subscriptionState.value = payload
 }
@@ -101,6 +137,10 @@ const onBreakerChange = (payload: typeof breakerState.value) => {
 
 const onGiftChange = (payload: typeof giftState.value) => {
   giftState.value = payload
+}
+
+const onBundleChange = (payload: typeof bundleState.value) => {
+  bundleState.value = payload
 }
 
 const mergedAttributes = computed(() => {
@@ -120,11 +160,30 @@ const mergedAttributes = computed(() => {
     map.set(attr.key, attr.value)
   }
 
+  // Bundle attributes include _bundle_id, _bundle_type + Items + _esb_data.
+  // Only merged when the parent still owns add-to-cart (FIXED bundles).
+  if (isBundle.value && !bundleState.value.ownsAddToCart) {
+    for (const attr of widgetData.value?.cartPayloadGuide?.customAttributes ?? []) {
+      map.set(attr.key, attr.value)
+    }
+    for (const attr of bundleState.value.attributes ?? []) {
+      map.set(attr.key, attr.value)
+    }
+  }
+
   return Array.from(map, ([key, value]) => ({ key, value }))
 })
 
 const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
   if (!selectedVariant.value) return
+
+  if (requiredQty.value > 1 && event.data.quantity % requiredQty.value !== 0) {
+    toast.add({
+      title: t('product.requiredQuantity', { quantity: requiredQty.value }),
+      color: 'error',
+    })
+    return
+  }
 
   loading.value = true
 
@@ -208,16 +267,6 @@ const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
         class="order-1 lg:order-2 mb-6 lg:mb-8"
       />
 
-      <ProductQuantityBreakerWidget
-        v-if="props.product"
-        v-model:quantity="state.quantity"
-        :product="props.product"
-        :selected-variant="selectedVariant"
-        :widget-data="widgetData"
-        :purchase-type="subscriptionState.isSubscription ? 'subscription' : 'one-time'"
-        @change="onBreakerChange"
-      />
-
       <ProductSubscriptionWidget
         v-if="props.product"
         :product="props.product"
@@ -226,14 +275,38 @@ const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
         @change="onSubscriptionChange"
       />
 
+      <ProductBundleWidget
+        v-if="props.product && isBundle"
+        :product="props.product"
+        :selected-variant="selectedVariant"
+        :widget-data="widgetData"
+        :selling-plan-id="subscriptionState.sellingPlanId"
+        :is-subscription="subscriptionState.isSubscription"
+        @change="onBundleChange"
+      />
+
+      <ProductQuantityBreakerWidget
+        v-if="props.product && !isBundle"
+        v-model:quantity="state.quantity"
+        :product="props.product"
+        :selected-variant="selectedVariant"
+        :widget-data="widgetData"
+        :purchase-type="subscriptionState.isSubscription ? 'subscription' : 'one-time'"
+        @change="onBreakerChange"
+      />
+
       <ProductGiftProductsWidget
+        v-if="!bundleState.ownsAddToCart"
         :widget-data="widgetData"
         :selling-plan-id="subscriptionState.sellingPlanId"
         :is-subscription="subscriptionState.isSubscription"
         @change="onGiftChange"
       />
 
-      <div class="flex justify-between items-center">
+      <div
+        v-if="!bundleState.ownsAddToCart"
+        class="flex justify-between items-center"
+      >
         <UFormField
           name="quantity"
           :label="$t('product.quantity')"
@@ -242,7 +315,8 @@ const onSubmit = async (event: FormSubmitEvent<typeof state>) => {
         >
           <UInputNumber
             v-model="state.quantity"
-            :min="1"
+            :min="requiredQty"
+            :step="requiredQty"
             :max="maxQuantity"
             class="w-24 lg:w-28"
             size="xl"

@@ -14,6 +14,15 @@ export const CART_LINE_FRAGMENT = `#graphql
         }
       }
     }
+    sellingPlanAllocation {
+      sellingPlan {
+        id
+        name
+        metafield(namespace: "easy_subscription_app", key: "REQUIRED_QUANTITY") {
+          value
+        }
+      }
+    }
     attributes {
       key
       value

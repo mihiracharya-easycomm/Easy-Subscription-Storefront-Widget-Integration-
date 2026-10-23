@@ -202,7 +202,8 @@
         "subscription": "Abo verfügbar",
         "priceFrom": "Ab {price}",
         "discount": "-{percentage}%",
-        "lowStock": "Nur noch {count} verfügbar | Nur noch {count} verfügbar"
+        "lowStock": "Nur noch {count} verfügbar | Nur noch {count} verfügbar",
+        "requiredQuantity": "Dieses Abo erfordert eine Menge, die ein Vielfaches von {quantity} ist. Bitte Menge anpassen, um fortzufahren."
     },
     "collection": {
         "products": {

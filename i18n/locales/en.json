@@ -202,7 +202,8 @@
         "subscription": "Subscription available",
         "priceFrom": "From {price}",
         "discount": "-{percentage}%",
-        "lowStock": "Only {count} left | Only {count} left"
+        "lowStock": "Only {count} left | Only {count} left",
+        "requiredQuantity": "This subscription plan requires a quantity that is a multiple of {quantity}. Please update the quantity to proceed."
     },
     "collection": {
         "products": {
